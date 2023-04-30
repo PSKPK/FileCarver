@@ -1,0 +1,321 @@
+class Slice:
+  clusterdata = None
+  data = None
+  width = None
+  
+  def __init__(self, cls):
+    self.clusterdata = cls
+    self.hexify()
+  
+  def hexToDec(self, a):
+    ans = 0
+    vals = {'0':0, '1':1, '2':2, '3':3, '4':4, '5':5, '6':6, '7':7,
+            '8':8, '9':9, 'a':10, 'b':11, 'c':12, 'd':13, 'e':14, 'f':15}
+    mul = 1
+    for ptr in range(-1,-len(a)-1,-1):
+      ans += vals[a[ptr]]*mul
+      mul *= 16
+    return ans
+
+  def litEndHexToDec(self, a):
+    arr = []
+    while a!='':
+      arr.append(a[-2:])
+      a=a[:-2]
+    return self.hexToDec(''.join(arr))
+  
+  def hexify(self):
+    strdata = self.clusterdata
+    self.data = []
+    for k in range(0, len(strdata), 2):
+      self.data.append(self.hexToDec(strdata[k:k+2]))
+  
+  def estimateWidth(self, minW = 20, maxW = 499):
+    min = float('inf')
+    width = minW
+    actual_width = width
+    data = self.clusterdata
+
+    while width<=maxW:
+      rows = []
+      imgdata=data
+
+      while imgdata!='':
+        rows.append(imgdata[:width*6])
+        imgdata = imgdata[width*6:]
+      
+      if len(rows[-1])<len(rows[0]):
+        rows = rows[:-1]
+
+      rowbs = []
+      for row in rows:
+        bs = []
+        while row!='':
+          bs.append(self.hexToDec(row[:2]))
+          row = row[2:]
+        rowbs.append(bs)
+      
+      total=0
+      for i in range(len(rowbs)-1):
+        sod=0
+        for j in range(len(rowbs[0])):
+          sod+=abs(rowbs[i][j]-rowbs[i+1][j])
+        total+=sod
+      avgsod=total
+      
+      if(avgsod<min):
+        min=avgsod
+        actual_width = width
+      
+      width = width+1
+    
+    self.width = actual_width
+///////////////////////////////////////////////////////////////////////////
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+class Disk:
+  data = None
+  clusters = None
+
+  def __init__(self, filename):
+    try:
+      import binascii
+      with open(filename, 'rb') as f:
+        self.data = str(binascii.hexlify(f.read()))[2:-1]
+    except FileNotFoundError as fnfe:
+      print('File not found.. Cannot create disk instance')
+      return None
+    except ModuleNotFoundError as mnfe:
+      print('Binascii module not found.. Cannot create disk instance')
+      return None
+  def createClusters(self, size, lis):
+    if len(self.data)//size!=0:
+      print("Expected non-uniform sized clusters with given size")
+    tdata = self.data
+    self.clusters = []
+    i = -1
+    while tdata!='':
+      i+=1
+      if i in lis:
+        self.clusters.append(Slice(tdata[:size*2]))
+      tdata = tdata[size*2:]
+    return self.clusters
+////////////////////////////////////////////////////////////////////////////
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+
+class Orderer:
+  def __init__(self, slices=None):
+    if slices==None or len(slices)==0:
+      return print('Cannot make Orderer instance without slices to order..\n')
+    self.slices  = slices
+    self.size    = len(slices)
+
+  def FindSim(self, ar1, ar2):
+    ans = 0
+    for k in range(len(ar1)):
+      ans += abs(ar1[k]-ar2[k])
+    return ans
+
+  def SimilarityMatrix(self, prnt=1):
+    self.mat = [[None for k in range(self.size)] for j in range(self.size)]
+    for k in range(self.size):
+      w = self.slices[k].width
+      for j in range(self.size):
+        self.mat[k][j] = self.FindSim(self.slices[k].data[-w*3:], self.slices[j].data[:3*w])
+    if prnt==0:
+      return
+    for k in range(self.size):
+      print("{0:<20}".format(k), end='')
+      for j in range(self.size):
+        print(self.mat[k][j], end =' ')
+      print()
+  
+  def Order(self, prnt=1):
+    self.order = {}
+    li = []
+    for k in range(self.size):
+      mindif = float('inf')
+      ans = k
+      for c in range(self.size):
+        if self.mat[k][c]<mindif:
+          ans = c
+          mindif = self.mat[k][c]
+      self.order[k] = ans
+      li.append(ans)
+    print(li)
+    if prnt!=0:
+      print('Order : ', self.order)
+  
+  def GenerateImage(self, name='Newfile', w=100, byos=0, imos=0):
+    import numpy as np
+    from PIL import Image
+    start = 0
+    for k in range(self.size):
+      if k not in set(self.order.values()):
+        start = k                                                                                                                                           
+        break
+    pixels = []
+    for c in range(self.size):
+      pixels += self.slices[start].data
+      start = self.order[start]
+    pixels.reverse()
+    pixels = pixels[byos:]
+    pixelarray = []
+    while pixels!=[]:
+      try:
+        pixelarray.append((pixels[0], pixels[1], pixels[2]))
+      except IndexError as e:
+        pass
+      if len(pixelarray[-1]) !=3:
+        pixelarray = pixelarray[:-1]
+        break
+      pixels = pixels[3:]
+    # pixelarray = pixelarray[imos:]
+    nparray = []
+    while pixelarray != []:
+      nparray.append(list(pixelarray[:w][::-1]))
+      if len(nparray[-1]) != w:
+        nparray = nparray[:-1]
+        break
+      pixelarray = pixelarray[w:]
+    array = np.array(nparray, dtype=np.uint8)
+    new_image = Image.fromarray(array)
+    new_image.save(name+'.jpg')
+    return nparray
+
+//////////////////////////////////////////////////////////////////////////////////
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+
+
+a = Disk('SIX.DSK')
+lis = [4,5,6,7,8,9,10]
+cls = a.createClusters(4096,lis)
+for c in cls:
+  c.estimateWidth(maxW = 300)
+  print(c.width)
+//////////////////////////////////////////////////////////////////////////////////
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+
+pix = []
+
+if True:
+  slices = [c for c in cls]
+  o = Orderer(slices)
+  o.SimilarityMatrix(prnt=0)
+  o.Order()
+  for k in range(3):
+    pix.append(o.GenerateImage('Horse'+str(k), cls[0].width, byos=k, imos=0))
+
+import numpy as np
+from PIL import Image
+
+pixels = []
+for os in range(3):
+  for row in pix[os]:
+    pixels.append(row+row)
+  arr = np.array(pixels, dtype=np.uint8)
+new_image = Image.fromarray(arr)
+new_image.save('Name'+str(3)+'.jpg')
+/////////////////////////////////////////////////////////////////////////////////
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+
+##  CODE BLOCK CREATED ON 26/4/23
+##  CODE FOR IDENTIFYING GARBAGE CLUSTERS
+class DiskAnalyzer():
+  FILE = None
+  Cls0 = None
+  FATData = None
+  ClsData = None
+  NumOfCls = None
+  FreeCls = None
+  UsedCls = None
+  CleanCls = None
+  FCCls = None
+  Clusters = None
+
+  def __init__(self, filename:str =None):
+    if filename!=None and filename[-4:].upper()=='.DSK':
+      self.FILE = filename
+    else:
+      if filename==None:
+        raise Exception('Cannot initialize DiskAnalyzer without .DSK file')
+      else:
+        raise Exception('Passed argument is not a .DSK file : '+filename)
+  
+  def examine(self):
+    import binascii
+    with open(self.FILE, 'rb') as f:
+        data = str(binascii.hexlify(f.read()))[2:-1]
+    self.Cls0   = ""
+    self.FATData = data[4096*2:4096*4]
+    self.ClsData = data[4096*4:]
+    self.NumOfCls = len(data)//(8192)
+    self.Clusters = {}
+    for c in range(self.NumOfCls):
+      self.Clusters[c] = data[8192*c:8192*(c+1)]
+    self.classifyCls()
+  
+  def B2D(self, Bytes:str):
+    return int(Bytes[2:]+Bytes[:2], 16)
+
+  def classifyCls(self):
+    self.FreeCls = [0,[]]
+    self.UsedCls = [0,[]]
+    curcls = 2
+    ptr = 0
+    while curcls < self.NumOfCls:
+      byte = self.FATData[ptr:ptr+4]
+      if self.B2D(byte) != 0:
+        self.UsedCls[0] += 1
+        self.UsedCls[1].append(curcls)
+      else:
+        self.FreeCls[0] += 1
+        self.FreeCls[1].append(curcls)
+      curcls += 1
+      ptr += 4
+    print('Total number of clusters : ', self.NumOfCls)
+    print('Used Cluster count : ', self.UsedCls[0])
+    print('Free Cluster count : ', self.FreeCls[0])
+    print('Used Clusters are  : ', self.UsedCls[1])
+    self.CleanCls = [0, []]
+    self.FCCls    = [0, []]
+    for cno in self.FreeCls[1]:
+      data = self.Clusters[cno]
+      if data.count('1A') > 2048 or data.count('1a') > 2048:
+        self.CleanCls[0] += 1
+        self.CleanCls[1].append(cno)
+      else:
+        self.FCCls[0] += 1
+        self.FCCls[1].append(cno)
+    print('Clean Clusters count : ', self.CleanCls[0])
+    print('Useful Clusters count : ', self.FCCls[0])
+    print('Useful Clusters are : ', self.FCCls[1])
+  
+  def getCls(self, num:int = None):
+    if num != None:
+      return self.Clusters[num]
+    return self.Clusters
+
+da = DiskAnalyzer('SIX.DSK')
+da.examine()
+cls = da.getCls()
+
+for cl in cls.keys():
+  print(cl, ":", cls[cl][:30], '....')
+
+'''
+slices = []
+for c in range(2):
+  slices.append(Slice(da.ClsData[8192*(27+c):8192*(28+c)]))
+  slices[-1].estimateWidth(maxW = 450)
+
+print(slices[0].width)
+o = Orderer(slices)
+o.SimilarityMatrix(prnt=0)
+o.Order()
+a = o.GenerateImage(name='test', w=slices[0].width)
+'''
