@@ -92,6 +92,7 @@ class UILayout(FloatLayout):
         self.WidthLeave       = Button(text='Proceed', size_hint=(.2,.1), pos_hint={'x':.7, 'y':.45}, on_press=lambda b: self.MakeDisplayPage(), color='white', background_color='black', disabled=True)
         self.WidthProgress    = Label(text="Progress : 0%", color='green', size_hint=(.3,.1), pos_hint={'x':.65,'y':.55}, font_size=20)
         self.WidthEstimates   = TextInput(text='', readonly=True, multiline=True, size_hint=(.4,.6), pos_hint={'x':.15, 'y':.1})
+        self.WidthPath        = TextInput(text='', hint_text='Enter path where to save images', size_hint=(.25,.1), pos_hint={'x':.65, 'y':.2}, multiline=True)
         self.ImageSlices      = {}
         for cno in self.SelectedBtns:
             self.ImageSlices[cno] = Slice(self.da.getCls([int(cno)])[int(cno)], cno)
@@ -107,7 +108,7 @@ class UILayout(FloatLayout):
             th.start()
         
         self.clock = Clock.schedule_interval(self.addlbls, 1)
-        return [self.WidthLabel, self.WidthLeave, self.WidthProgress, self.WidthEstimates,
+        return [self.WidthLabel, self.WidthLeave, self.WidthProgress, self.WidthEstimates, self.WidthPath,
                 MyLabel(text="Estimated widths : ", color='black', size_hint=(.3,.1), pos_hint={'x':.15,'y':.71})]
 
     def addlbls(self, *args):
@@ -122,7 +123,6 @@ class UILayout(FloatLayout):
             return
         cno = self.addlbl[-1]
         self.WidthEstimates.text += 'Estimated width of cluster '+cno+' : '+str(self.ImageSlices[cno].width)+'\n'
-        #self.add_widget(MyLabel(text='Estimated width of cluster '+cno+' : '+str(self.ImageSlices[cno].width), size_hint=(1,.1), pos_hint={'x':.1,'y':.7-self.temp*.05}, color='black', halign='left'))
         self.addlbl.remove(cno)
         self.temp+=1
         self.WidthProgress.text = "Progress : "+str(round((self.temp/len(self.SelectedBtns)*100), 2))+"%"
@@ -142,7 +142,7 @@ class UILayout(FloatLayout):
         while temp!=[]:
             newl = []
             head = temp[0]
-            while head not in newl:
+            while head not in newl and head in temp:
                 newl.append(head)
                 temp.remove(head)
                 head = order[head]
@@ -171,11 +171,11 @@ class UILayout(FloatLayout):
                     pix2.append(row+row)
             arr = np.array(pix2, dtype=np.uint8)
             new_image = Image.fromarray(arr)
-            new_image.save('Image'+str(tmp)+'.bmp')
-            self.imagenames.append('Image'+str(tmp)+'.bmp')
-            tmp += 1
+            new_image.save(self.ImageFolderPath+ 'Image'+str(tmp)+'.bmp')
+            self.imagenames.append(self.ImageFolderPath+'Image'+str(tmp)+'.bmp')
             time.sleep(1)
             self.DisplayProgress.text = 'Progress : '+str(50+50*round(tmp/len(groups), 2))+'%'
+            tmp += 1
         self.DisplayProgress.text = 'Progress : 100%'
         self.DisplayLabel.text = 'Images generated !!!'
         self.DisplayLabel.color = 'green'
@@ -228,6 +228,19 @@ class UILayout(FloatLayout):
             self.add_widget(wid)
     
     def MakeDisplayPage(self):
+        if not os.path.exists(self.WidthPath.text):
+            self.WidthPath.text = ''
+            self.WidthPath.hint_text='Enter proper folder path..'
+            return
+        else:
+            if os.path.isdir(self.WidthPath.text):
+                self.ImageFolderPath = self.WidthPath.text
+                if self.ImageFolderPath[-1]!='/':
+                    self.ImageFolderPath += '/'
+            else:
+                self.WidthPath.text = ''
+                self.WidthPath.hint_text='Enter proper folder path..'
+                return
         self.clear_widgets()
         self.DisplayLabel = Label(text="Images are being grouped from clusters", color='blue', size_hint=(1,.1), pos_hint={'x':0,'y':.8}, font_size=30)
         self.DisplayProgress = Label(text="Progress : 0%", color='green', size_hint=(.3,.1), pos_hint={'x':.65,'y':.60}, font_size=20)
